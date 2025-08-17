@@ -113,40 +113,6 @@ export function encodeUrlSegment(input: string): string {
 // Purpose: Safe string handling, Unicode anomaly detection, sanitization
 // =======================================================
 
-/**
- * Detect suspicious Unicode patterns (like mixed scripts that might be used
- * for phishing, homoglyph attacks, or hidden virus-like payloads).
- */
-export function detectSuspiciousUnicode(input: string): boolean {
-  if (!input) return false
-
-  let scriptLatin = false
-  let scriptCyrillic = false
-  let scriptArabic = false
-  let suspicious = false
-
-  for (let i = 0; i < input.length; i++) {
-    const code = input.charCodeAt(i)
-
-    if (code >= 0x0041 && code <= 0x007A) scriptLatin = true
-    if (code >= 0x0400 && code <= 0x04FF) scriptCyrillic = true
-    if (code >= 0x0600 && code <= 0x06FF) scriptArabic = true
-
-    // Extra check: disallow control chars
-    if (code < 32 || (code >= 127 && code <= 159)) {
-      suspicious = true
-    }
-  }
-
-  // Mixed-script detection (Latin + Cyrillic / Arabic mixed is dangerous)
-  if ((scriptLatin && scriptCyrillic) || (scriptLatin && scriptArabic)) {
-    suspicious = true
-  }
-
-  return suspicious
-}
-
-
 /* -------------------------
    S-3.10: Convenience sanitizer pipeline
    - Allows you to create a common pipeline used by validator sanitizers
@@ -181,4 +147,73 @@ export function sanitizeForUsername(input: string): string {
   s = s.replace(/[^0-9A-Za-z_\-]/g, "")
   // final trim
   return s
+}
+
+// =======================================================
+// File 5: src/lib/security/safeString.ts
+// Purpose: Safe string handling, Unicode anomaly detection, sanitization
+// =======================================================
+
+/**
+ * Detect suspicious Unicode patterns (like mixed scripts that might be used
+ * for phishing, homoglyph attacks, or hidden virus-like payloads).
+ */
+export function detectSuspiciousUnicode(input: string): boolean {
+  if (!input) return false
+
+  let scriptLatin = false
+  let scriptCyrillic = false
+  let scriptArabic = false
+  let suspicious = false
+
+  for (let i = 0; i < input.length; i++) {
+    const code = input.charCodeAt(i)
+
+    if (code >= 0x0041 && code <= 0x007A) scriptLatin = true
+    if (code >= 0x0400 && code <= 0x04FF) scriptCyrillic = true
+    if (code >= 0x0600 && code <= 0x06FF) scriptArabic = true
+
+    // Extra check: disallow control chars
+    if (code < 32 || (code >= 127 && code <= 159)) {
+      suspicious = true
+    }
+  }
+
+  // Mixed-script detection (Latin + Cyrillic / Arabic mixed is dangerous)
+  if ((scriptLatin && scriptCyrillic) || (scriptLatin && scriptArabic)) {
+    suspicious = true
+  }
+
+  return suspicious
+}
+
+/**
+ * Main safe string sanitizer:
+ * - Trims spaces
+ * - Removes null bytes
+ * - Replaces suspicious characters
+ * - Enforces Unicode safety
+ */
+export function safeString(input: string): string {
+  if (!input) return ""
+
+  // Step 1: Trim
+  let sanitized = input.trim()
+
+  // Step 2: Remove null bytes
+  sanitized = sanitized.replace(/\0/g, "")
+
+  // Step 3: Basic XSS cleanup (no < >)
+  sanitized = sanitized.replace(/[<>]/g, "")
+
+  // Step 4: Unicode check
+  if (detectSuspiciousUnicode(sanitized)) {
+    // 🚨 Instead of rejecting, we replace suspicious chars with "?"
+    sanitized = sanitized
+      .split("")
+      .map((ch) => (detectSuspiciousUnicode(ch) ? "?" : ch))
+      .join("")
+  }
+
+  return sanitized
 }
