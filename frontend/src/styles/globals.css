@@ -1,0 +1,8 @@
+@import "tailwindcss";
+
+
+:root {
+  --wkt3-primary: 111 66 193; /* use HSL RGB triplet only for theming */
+}
+
+html, body, #__next { height: 100%; }
