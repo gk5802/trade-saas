@@ -13,7 +13,7 @@ import { safeString } from "../security/safeString"
 export type SchemaField = {
   validator: Validator | { validate: (value: any) => ValidationResult }
   required?: boolean
-  sanitize?: boolean        // default true for strings
+  sanitize?: boolean | ((value: any) => any)  // ✅ allow custom sanitizer      // default true for strings
   defaultValue?: any
 }
 
