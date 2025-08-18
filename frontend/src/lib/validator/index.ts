@@ -7,12 +7,11 @@
 
 import { ValidationFn, SanitizerFn } from "./types"
 
-// ✅ Main validation result type
+// ✅ Single source of truth for validation results
 export type ValidationResult = {
   valid: boolean
-  value: any
   errors: string[]
-  sanitized?: any // added for schema-level access
+  sanitized: any
 }
 
 // ✅ Core Validator class
@@ -20,17 +19,21 @@ export class Validator {
   private validators: ValidationFn[] = []
   private sanitizers: SanitizerFn[] = []
 
-  // -------------------
-  // 1. Add sanitizers
-  // -------------------
+  private static readonly htmlMap: Record<string, string> = {
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  }
+
+  // 1) Add sanitizers
   sanitize(fn: SanitizerFn): this {
     this.sanitizers.push(fn)
     return this
   }
 
-  // -------------------
-  // 2. Basic rules
-  // -------------------
+  // 2) Basic rules
   required(msg = "This field is required"): this {
     this.validators.push((v) => {
       if (v === undefined || v === null || v === "") return msg
@@ -63,9 +66,7 @@ export class Validator {
     return this
   }
 
-  // -------------------
-  // 3. String length
-  // -------------------
+  // 3) String length
   min(len: number, msg?: string): this {
     this.validators.push((v) =>
       typeof v === "string" && v.length >= len
@@ -84,9 +85,7 @@ export class Validator {
     return this
   }
 
-  // -------------------
-  // 4. Built-in sanitizers
-  // -------------------
+  // 4) Built-in sanitizers
   trim(): this {
     this.sanitizers.push((v) => (typeof v === "string" ? v.trim() : v))
     return this
@@ -95,9 +94,7 @@ export class Validator {
   escapeHtml(): this {
     this.sanitizers.push((v) =>
       typeof v === "string"
-        ? v.replace(/[&<>"']/g, (c) =>
-            ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] || c)
-          )
+        ? v.replace(/[&<>"']/g, (c) => Validator.htmlMap[c] || c)
         : v
     )
     return this
@@ -110,18 +107,14 @@ export class Validator {
     return this
   }
 
-  // -------------------
-  // 5. Run all checks
-  // -------------------
+  // 5) Run all checks
   validate(value: any): ValidationResult {
     let sanitized = value
 
-    // apply sanitizers
     for (const fn of this.sanitizers) {
       sanitized = fn(sanitized)
     }
 
-    // run validators
     const errors: string[] = []
     for (const fn of this.validators) {
       const err = fn(sanitized)
@@ -130,9 +123,8 @@ export class Validator {
 
     return {
       valid: errors.length === 0,
-      value: sanitized,
-      sanitized,
       errors,
+      sanitized,
     }
   }
 }
