@@ -2,38 +2,21 @@
 // =======================================================
 // File 2: src/lib/validator/index.ts
 // Depends on: types.ts (File 1)
-// Purpose: Provides Validator class + ValidationResult type
+// Purpose: Provides Validator class
 // =======================================================
 
-import { ValidationFn, SanitizerFn } from "./types"
-
-// ✅ Single source of truth for validation results
-export type ValidationResult = {
-  valid: boolean
-  errors: string[]
-  sanitized: any
-}
+import { ValidationFn, SanitizerFn, ValidationResult } from "./types"
 
 // ✅ Core Validator class
 export class Validator {
   private validators: ValidationFn[] = []
   private sanitizers: SanitizerFn[] = []
 
-  private static readonly htmlMap: Record<string, string> = {
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;",
-  }
-
-  // 1) Add sanitizers
   sanitize(fn: SanitizerFn): this {
     this.sanitizers.push(fn)
     return this
   }
 
-  // 2) Basic rules
   required(msg = "This field is required"): this {
     this.validators.push((v) => {
       if (v === undefined || v === null || v === "") return msg
@@ -66,7 +49,6 @@ export class Validator {
     return this
   }
 
-  // 3) String length
   min(len: number, msg?: string): this {
     this.validators.push((v) =>
       typeof v === "string" && v.length >= len
@@ -85,7 +67,6 @@ export class Validator {
     return this
   }
 
-  // 4) Built-in sanitizers
   trim(): this {
     this.sanitizers.push((v) => (typeof v === "string" ? v.trim() : v))
     return this
@@ -94,7 +75,17 @@ export class Validator {
   escapeHtml(): this {
     this.sanitizers.push((v) =>
       typeof v === "string"
-        ? v.replace(/[&<>"']/g, (c) => Validator.htmlMap[c] || c)
+        ? v.replace(/[&<>"']/g, (c) =>
+            (
+              {
+                "&": "&amp;",
+                "<": "&lt;",
+                ">": "&gt;",
+                '"': "&quot;",
+                "'": "&#39;",
+              } as Record<string, string>
+            )[c] || c
+          )
         : v
     )
     return this
@@ -107,7 +98,6 @@ export class Validator {
     return this
   }
 
-  // 5) Run all checks
   validate(value: any): ValidationResult {
     let sanitized = value
 
@@ -123,8 +113,9 @@ export class Validator {
 
     return {
       valid: errors.length === 0,
-      errors,
+      value: sanitized,
       sanitized,
+      errors,
     }
   }
 }

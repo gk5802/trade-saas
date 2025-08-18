@@ -24,10 +24,13 @@ export type ValidationRule =
   | { type: "number" }
   | { type: "required" };
 
-// Validation result type
-export interface ValidationResult {
-  valid: boolean;
-  errors: string[];
+
+// ✅ Canonical ValidationResult (used everywhere)
+export type ValidationResult = {
+  valid: boolean
+  value: any
+  errors: string[]
+  sanitized?: any
 }
 
 // Schema type (future: can hold multiple field validators)
