@@ -67,4 +67,18 @@ func main() {
 	// ---------------------------
 	fmt.Println("🚀 Server running at http://localhost:8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
+
+	http.HandleFunc("/testdb", func(w http.ResponseWriter, r *http.Request) {
+		// Insert
+		id, _ := db.DB.Insert("tokens", db.Document{"token": "abc", "serial": 1})
+		fmt.Fprintf(w, "Inserted ID: %s\n", id)
+
+		// Find
+		docs, _ := db.DB.Find("tokens", db.Document{"serial": 1})
+		fmt.Fprintf(w, "Found docs: %+v\n", docs)
+
+		// Delete
+		_ = db.DB.Delete("tokens", id)
+		fmt.Fprintf(w, "Deleted ID: %s\n", id)
+	})
 }
