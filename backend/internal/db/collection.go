@@ -2,6 +2,7 @@ package db
 
 import "sync"
 
+// Collection is a tiny in-memory collection
 type Collection struct {
 	Name string
 	data []Document
@@ -9,10 +10,13 @@ type Collection struct {
 }
 
 func NewCollection(name string) *Collection {
-	return &Collection{Name: name, data: []Document{}}
+	return &Collection{
+		Name: name,
+		data: []Document{},
+	}
 }
 
-// Insert adds a new document
+// Insert appends a document to the collection
 func (c *Collection) Insert(doc Document) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -20,24 +24,24 @@ func (c *Collection) Insert(doc Document) error {
 	return nil
 }
 
-// Find returns all documents matching filter
+// Find returns all docs where filter(doc) == true
 func (c *Collection) Find(filter func(Document) bool) []Document {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	results := []Document{}
+	res := []Document{}
 	for _, d := range c.data {
 		if filter(d) {
-			results = append(results, d)
+			res = append(res, d)
 		}
 	}
-	return results
+	return res
 }
 
-// Delete removes matching documents
+// Delete removes documents where filter(doc) == true
 func (c *Collection) Delete(filter func(Document) bool) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	newData := []Document{}
+	newData := make([]Document, 0, len(c.data))
 	for _, d := range c.data {
 		if !filter(d) {
 			newData = append(newData, d)

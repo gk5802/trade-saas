@@ -1,21 +1,15 @@
-// ======================================================
-// File 8.2: backend/internal/auth/serial.go
-// Purpose: atomic serial generator for verification flows
-// ======================================================
 package auth
 
-import (
-	"sync/atomic"
-)
+import "sync/atomic"
 
 var serialCounter uint64
 
-// NextSerial returns monotonically increasing uint64
+// NextSerial returns monotonic increasing uint64
 func NextSerial() uint64 {
 	return atomic.AddUint64(&serialCounter, 1)
 }
 
-// UintToString with minimal allocation
+// UintToString converts uint64 to string without fmt for speed
 func UintToString(u uint64) string {
 	if u == 0 {
 		return "0"

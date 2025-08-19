@@ -6,31 +6,43 @@ import (
 )
 
 type Database struct {
-	collections map[string]*Collection
 	mu          sync.RWMutex
+	collections map[string]*Collection
+}
+
+// DefaultDB is a convenient global for quick usage.
+// In a production refactor you can create instances and pass them.
+var DefaultDB *Database
+
+func init() {
+	DefaultDB = NewDatabase()
 }
 
 func NewDatabase() *Database {
-	return &Database{collections: make(map[string]*Collection)}
-}
-
-func (db *Database) CreateCollection(name string) *Collection {
-	db.mu.Lock()
-	defer db.mu.Unlock()
-	if coll, ok := db.collections[name]; ok {
-		return coll
+	return &Database{
+		collections: make(map[string]*Collection),
 	}
-	coll := NewCollection(name)
-	db.collections[name] = coll
-	return coll
 }
 
-func (db *Database) GetCollection(name string) (*Collection, error) {
-	db.mu.RLock()
-	defer db.mu.RUnlock()
-	coll, ok := db.collections[name]
+// CreateCollection creates (or returns existing) collection
+func (d *Database) CreateCollection(name string) *Collection {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if c, ok := d.collections[name]; ok {
+		return c
+	}
+	c := NewCollection(name)
+	d.collections[name] = c
+	return c
+}
+
+// GetCollection returns collection (error if not exists)
+func (d *Database) GetCollection(name string) (*Collection, error) {
+	d.mu.RLock()
+	c, ok := d.collections[name]
+	d.mu.RUnlock()
 	if !ok {
 		return nil, errors.New("collection not found")
 	}
-	return coll, nil
+	return c, nil
 }

@@ -1,7 +1,3 @@
-// ======================================================
-// File 8.1: backend/internal/auth/token.go
-// Purpose: secure random token helpers (URL-safe)
-// ======================================================
 package auth
 
 import (
@@ -9,17 +5,18 @@ import (
 	"encoding/base64"
 )
 
+// RandomBytes returns secure random bytes
 func RandomBytes(n int) ([]byte, error) {
 	b := make([]byte, n)
 	_, err := rand.Read(b)
 	return b, err
 }
 
+// RandomTokenURL returns URL-safe token (no padding)
 func RandomTokenURL(n int) (string, error) {
 	b, err := RandomBytes(n)
 	if err != nil {
 		return "", err
 	}
-	// URL-safe, no padding
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }

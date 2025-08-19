@@ -9,66 +9,65 @@ import (
 	"backend/internal/db"
 )
 
-type contextKey string
+type ctxKey string
 
-const userIDKey contextKey = "userID"
+const userKey ctxKey = "userID"
 
-// Middleware protects routes by validating the access token
-func Middleware(database *db.Database, next http.Handler) http.Handler {
+// Middleware checks Authorization: Bearer <access> and attaches userID to ctx
+func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			http.Error(w, "missing authorization header", http.StatusUnauthorized)
+		authz := r.Header.Get("Authorization")
+		if authz == "" {
+			http.Error(w, "missing authorization", http.StatusUnauthorized)
 			return
 		}
-
-		parts := strings.SplitN(authHeader, " ", 2)
+		parts := strings.SplitN(authz, " ", 2)
 		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-			http.Error(w, "invalid authorization format", http.StatusUnauthorized)
+			http.Error(w, "invalid authorization", http.StatusUnauthorized)
 			return
 		}
+		access := parts[1]
 
-		accessToken := parts[1]
-
-		// Look up the session by access token
-		coll, err := database.GetCollection("sessions")
-		if err != nil {
-			http.Error(w, "internal error", http.StatusInternalServerError)
-			return
-		}
-
-		results := coll.Find(func(d db.Document) bool {
-			val, ok := d["access"].(string)
-			return ok && val == accessToken
+		// find session
+		c := db.DefaultDB.CreateCollection("sessions")
+		res := c.Find(func(d db.Document) bool {
+			if a, ok := d["access"].(string); ok {
+				return a == access
+			}
+			return false
 		})
-
-		if len(results) == 0 {
+		if len(res) == 0 {
 			http.Error(w, "invalid or expired token", http.StatusUnauthorized)
 			return
 		}
-
-		sessionDoc := results[0]
-
-		// check expiration
-		exp, ok := sessionDoc["access_exp"].(int64)
-		if !ok || time.Now().Unix() > exp {
-			_ = coll.Delete(func(d db.Document) bool {
-				val, _ := d["access"].(string)
-				return val == accessToken
-			})
-			http.Error(w, "token expired", http.StatusUnauthorized)
+		// check expiry
+		exp, ok := res[0]["access_exp"]
+		if !ok {
+			http.Error(w, "invalid token", http.StatusUnauthorized)
 			return
 		}
+		if expI, ok := toInt64(exp); ok {
+			if time.Now().Unix() > expI {
+				// delete expired
+				_ = c.Delete(func(d db.Document) bool {
+					if a, ok := d["access"].(string); ok {
+						return a == access
+					}
+					return false
+				})
+				http.Error(w, "expired token", http.StatusUnauthorized)
+				return
+			}
+		}
 
-		// token is valid → attach userID to context
-		userID, _ := sessionDoc["user_id"].(string)
-		ctx := context.WithValue(r.Context(), userIDKey, userID)
+		uid, _ := res[0]["user_id"].(string)
+		ctx := context.WithValue(r.Context(), userKey, uid)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
-// GetUserID retrieves the authenticated userID from context
-func GetUserID(r *http.Request) (string, bool) {
-	userID, ok := r.Context().Value(userIDKey).(string)
-	return userID, ok
+// UserIDFromRequest returns userID injected by middleware
+func UserIDFromRequest(r *http.Request) (string, bool) {
+	uid, ok := r.Context().Value(userKey).(string)
+	return uid, ok
 }
