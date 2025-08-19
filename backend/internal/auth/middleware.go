@@ -1,88 +1,74 @@
-// ======================================================
-// File: backend/internal/auth/middleware.go
-// Package: auth
-// Purpose: Auth middleware with one-time-use tokens
-// ======================================================
-
 package auth
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
+	"strings"
+	"time"
 
 	"backend/internal/db"
 )
 
-// --------------------
-// Token Record
-// --------------------
-type TokenRecord struct {
-	Serial string `json:"serial"`
-	Token  string `json:"token"`
-	UserID string `json:"user_id"`
-}
-
-// --------------------
-// Context keys
-// --------------------
 type contextKey string
 
 const userIDKey contextKey = "userID"
 
-// SetUserID stores userID in request context
-func SetUserID(ctx context.Context, userID string) context.Context {
-	return context.WithValue(ctx, userIDKey, userID)
-}
-
-// GetUserID retrieves userID from request context
-func GetUserID(ctx context.Context) (string, bool) {
-	val, ok := ctx.Value(userIDKey).(string)
-	return val, ok
-}
-
-// --------------------
-// Auth Middleware
-// --------------------
-func AuthMiddleware(next http.Handler) http.Handler {
+// Middleware protects routes by validating the access token
+func Middleware(database *db.Database, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		serial := r.Header.Get("X-Serial")
-		token := r.Header.Get("X-Auth-Token")
-
-		if serial == "" || token == "" {
-			http.Error(w, "missing auth headers", http.StatusUnauthorized)
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			http.Error(w, "missing authorization header", http.StatusUnauthorized)
 			return
 		}
 
-		// 🔥 One-time validation (auto delete after use)
-		doc, err := db.DB.ConsumeOnce("tokens", db.Document{
-			"serial": serial,
-			"token":  token,
-		})
+		parts := strings.SplitN(authHeader, " ", 2)
+		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+			http.Error(w, "invalid authorization format", http.StatusUnauthorized)
+			return
+		}
+
+		accessToken := parts[1]
+
+		// Look up the session by access token
+		coll, err := database.GetCollection("sessions")
 		if err != nil {
-			http.Error(w, "invalid or already used token", http.StatusUnauthorized)
+			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
 
-		// Extract userID if present
-		userID := ""
-		if v, ok := doc["user_id"].(string); ok {
-			userID = v
+		results := coll.Find(func(d db.Document) bool {
+			val, ok := d["access"].(string)
+			return ok && val == accessToken
+		})
+
+		if len(results) == 0 {
+			http.Error(w, "invalid or expired token", http.StatusUnauthorized)
+			return
 		}
 
-		// Attach userID to request context
-		ctx := SetUserID(r.Context(), userID)
+		sessionDoc := results[0]
 
-		// Pass to next handler
+		// check expiration
+		exp, ok := sessionDoc["access_exp"].(int64)
+		if !ok || time.Now().Unix() > exp {
+			_ = coll.Delete(func(d db.Document) bool {
+				val, _ := d["access"].(string)
+				return val == accessToken
+			})
+			http.Error(w, "token expired", http.StatusUnauthorized)
+			return
+		}
+
+		// token is valid → attach userID to context
+		userID, _ := sessionDoc["user_id"].(string)
+		ctx := context.WithValue(r.Context(), userIDKey, userID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
-// --------------------
-// JSON Helper
-// --------------------
-func WriteJSON(w http.ResponseWriter, status int, data interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(data)
+// GetUserID retrieves the authenticated userID from context
+func GetUserID(r *http.Request) (string, bool) {
+	userID, ok := r.Context().Value(userIDKey).(string)
+	return userID, ok
 }

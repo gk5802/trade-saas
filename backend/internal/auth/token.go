@@ -1,8 +1,7 @@
-// =======================================================
-// File 8.1: internal/auth/token.go
-// Purpose: Token generator
-// =======================================================
-
+// ======================================================
+// File 8.1: backend/internal/auth/token.go
+// Purpose: secure random token helpers (URL-safe)
+// ======================================================
 package auth
 
 import (
@@ -10,12 +9,17 @@ import (
 	"encoding/base64"
 )
 
-// GenerateToken generates a secure random token
-func GenerateToken(length int) (string, error) {
-	bytes := make([]byte, length)
-	_, err := rand.Read(bytes)
+func RandomBytes(n int) ([]byte, error) {
+	b := make([]byte, n)
+	_, err := rand.Read(b)
+	return b, err
+}
+
+func RandomTokenURL(n int) (string, error) {
+	b, err := RandomBytes(n)
 	if err != nil {
 		return "", err
 	}
-	return base64.URLEncoding.WithPadding(base64.NoPadding).EncodeToString(bytes), nil
+	// URL-safe, no padding
+	return base64.RawURLEncoding.EncodeToString(b), nil
 }

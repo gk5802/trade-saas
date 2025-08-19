@@ -1,8 +1,3 @@
-// =======================================================
-// File 6.1: cmd/server/main.go
-// Purpose: Entry point for Go backend server
-// =======================================================
-
 package main
 
 import (
@@ -10,75 +5,59 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strconv"
+	"time"
 
 	"backend/internal/auth"
 	"backend/internal/db"
+	"github.com/google/uuid"
 )
 
+var database *db.Database
+
 func main() {
-	// ---------------------------
-	// 1. Init DB + tokens storage
-	// ---------------------------
-	appDB := db.NewDatabase("appdb")
-	tokensColl, err := appDB.CreateCollection("tokens")
-	if err != nil {
-		log.Fatalf("failed to create tokens collection: %v", err)
+	database = db.NewDatabase()
+
+	http.HandleFunc("/create-session", handleCreateSession)
+	http.HandleFunc("/get-session", handleGetSession)
+	http.HandleFunc("/delete-session", handleDeleteSession)
+
+	fmt.Println("Server running at http://localhost:8080")
+	log.Fatal(http.ListenAndServe(":8080", nil))
+}
+
+func handleCreateSession(w http.ResponseWriter, r *http.Request) {
+	session := &auth.Session{
+		ID:         uuid.NewString(),
+		UserID:     "user123",
+		Access:     "access-token",
+		AccessExp:  time.Now().Add(15 * time.Minute),
+		Refresh:    "refresh-token",
+		RefreshExp: time.Now().Add(24 * time.Hour),
+		CreatedAt:  time.Now(),
 	}
 
-	// ---------------------------
-	// 2. Middleware
-	// ---------------------------
-	authMiddleware := auth.NewAuthMiddleware(tokensColl)
+	if err := auth.SaveSession(database, session); err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	json.NewEncoder(w).Encode(session)
+}
 
-	// ---------------------------
-	// 3. Public route: login
-	// ---------------------------
-	http.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
-		// for demo: always issue a token+serial
-		token := "demo-token-ABC123"
-		serial := uint64(1)
+func handleGetSession(w http.ResponseWriter, r *http.Request) {
+	refresh := r.URL.Query().Get("refresh")
+	session, err := auth.FindSessionByRefresh(database, refresh)
+	if err != nil {
+		http.Error(w, err.Error(), 404)
+		return
+	}
+	json.NewEncoder(w).Encode(session)
+}
 
-		// store in DB
-		err := tokensColl.Insert(strconv.FormatUint(serial, 10), db.Document{
-			"token": token,
-		})
-		if err != nil {
-			http.Error(w, "could not store token", http.StatusInternalServerError)
-			return
-		}
-
-		// return to client
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"token":  token,
-			"serial": serial,
-		})
-	})
-
-	// ---------------------------
-	// 4. Protected route
-	// ---------------------------
-	http.Handle("/secure", authMiddleware.Protect(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, "🎉 Secure data: you are authenticated!")
-	})))
-
-	// ---------------------------
-	// 5. Start server
-	// ---------------------------
-	fmt.Println("🚀 Server running at http://localhost:8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
-
-	http.HandleFunc("/testdb", func(w http.ResponseWriter, r *http.Request) {
-		// Insert
-		id, _ := db.DB.Insert("tokens", db.Document{"token": "abc", "serial": 1})
-		fmt.Fprintf(w, "Inserted ID: %s\n", id)
-
-		// Find
-		docs, _ := db.DB.Find("tokens", db.Document{"serial": 1})
-		fmt.Fprintf(w, "Found docs: %+v\n", docs)
-
-		// Delete
-		_ = db.DB.Delete("tokens", id)
-		fmt.Fprintf(w, "Deleted ID: %s\n", id)
-	})
+func handleDeleteSession(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	if err := auth.DeleteSession(database, id); err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	w.Write([]byte("deleted"))
 }
